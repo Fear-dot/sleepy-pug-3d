@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#050814">
+<title>Sleepy Pug v6</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050814;color:#fff;font-family:Inter,ui-rounded,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+#game{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;pointer-events:none;padding:max(14px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom))}
+.top{display:grid;grid-template-columns:1fr auto 1fr;gap:9px;align-items:start}
+.panel{background:rgba(8,12,25,.82);border:1px solid rgba(255,255,255,.17);border-radius:22px;box-shadow:0 12px 34px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.07);backdrop-filter:blur(12px)}
+.score{justify-self:start;min-width:104px;padding:9px 12px;display:grid;grid-template-columns:32px 1fr;gap:7px;align-items:center}
+.score .star{font-size:27px}.score b{font-size:22px}.score small{grid-column:2;font-size:9px;letter-spacing:.10em;color:#a8dcff;font-weight:900}
+.timer{min-width:137px;padding:9px 12px 8px;text-align:center}
+.timer .row{display:flex;justify-content:center;align-items:center;gap:7px;font-size:23px;font-weight:900}
+.bar{height:8px;border-radius:999px;background:rgba(255,255,255,.10);overflow:hidden;margin-top:6px;border:1px solid rgba(255,255,255,.08)}
+.bar>div{height:100%;width:100%;transform-origin:left center;background:linear-gradient(90deg,#3c9cff,#55d2ff,#86efac)}
+.houses{justify-self:end;min-width:104px;padding:8px 10px;text-align:center}
+.houses .icons{font-size:18px;letter-spacing:1px}.houses small{display:block;margin-top:2px;font-size:9px;color:#a8dcff;font-weight:900;letter-spacing:.10em}
+.tip{position:absolute;left:50%;transform:translateX(-50%);bottom:108px;width:min(420px,88vw);text-align:center;padding:9px 14px;border-radius:999px;background:rgba(8,12,25,.55);backdrop-filter:blur(10px);font-size:12px;font-weight:800;transition:opacity .35s}
+.pause,.sound{pointer-events:auto;position:absolute;bottom:max(20px,env(safe-area-inset-bottom));width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(8,12,25,.82);color:#fff;font-size:23px;font-weight:900;backdrop-filter:blur(12px)}
+.pause{left:18px}.sound{right:18px}
+.mode{position:absolute;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom));min-width:220px;padding:11px 18px;text-align:center;font-size:17px;font-weight:900}
+.ver{font-size:9px;opacity:.48;margin-left:5px}
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:#050814;z-index:15;text-align:center}
+.loading.hidden{display:none}
+.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:22px;background:rgba(3,6,15,.68);backdrop-filter:blur(12px);z-index:10}
+.overlay.hidden{display:none}
+.card{width:min(360px,92vw);padding:26px;border-radius:28px;background:rgba(10,14,28,.95);border:1px solid rgba(255,255,255,.17);text-align:center}
+.btn{pointer-events:auto;border:0;border-radius:18px;padding:13px 20px;background:#fff;color:#0b1020;font-weight:900;font-size:15px}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="loading" class="loading"><div><div style="font-size:58px">🐶💤</div><b>Eigenes 3D‑Mopsmodell wird geladen …</b><div style="font-size:11px;opacity:.6;margin-top:6px">v6</div></div></div>
+
+<div class="hud">
+  <div class="top">
+    <div class="panel score"><div class="star">⭐</div><b id="score">0</b><small>PUNKTE</small></div>
+    <div class="panel timer"><div class="row">⏱ <span id="time">15.0</span></div><div class="bar"><div id="timeFill"></div></div></div>
+    <div class="panel houses"><div class="icons">🏠🏠🏠</div><small>HÄUSER</small></div>
+  </div>
+  <div class="tip" id="tip">Tippe die fliegenden Dinge an, bevor sie den Mops erreichen.</div>
+  <button class="pause" id="pauseBtn">Ⅱ</button>
+  <div class="panel mode">❤️ 🐶 Mops‑Modus <span class="ver">v6</span></div>
+  <button class="sound" id="soundBtn">🔊</button>
+</div>
+
+<div id="gameOver" class="overlay hidden">
+  <div class="card">
+    <div style="font-size:56px">😳</div>
+    <h1>Der Mops ist wach!</h1>
+    <p>Du hast <b id="finalScore">0</b> Punkte geschafft.</p>
+    <button class="btn" id="restartBtn">Nochmal spielen</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+const mount=document.getElementById('game');
+const loading=document.getElementById('loading');
+const scoreEl=document.getElementById('score'),timeEl=document.getElementById('time'),timeFill=document.getElementById('timeFill');
+const tipEl=document.getElementById('tip'),gameOverEl=document.getElementById('gameOver'),finalScoreEl=document.getElementById('finalScore');
+const pauseBtn=document.getElementById('pauseBtn'),soundBtn=document.getElementById('soundBtn');
+
+let score=0,deadline=15,running=false,paused=false,soundOn=true,last=performance.now(),spawnIn=.7,pug=null,pugBaseScale=1;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x050814);
+scene.fog=new THREE.FogExp2(0x050814,.011);
+
+const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.1,100);
+camera.position.set(0,3.0,12.4);
+camera.lookAt(0,-.45,0);
+
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
+mount.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0x7d98d8,0x25190e,1.75));
+const key=new THREE.DirectionalLight(0xffd6ae,4);key.position.set(4,7,5);key.castShadow=true;scene.add(key);
+const rim=new THREE.DirectionalLight(0x7397ff,2.1);rim.position.set(-5,4,-4);scene.add(rim);
+const warm=new THREE.PointLight(0xffa04d,11,9,2);warm.position.set(3,.8,3.6);scene.add(warm);
+
+// stars
+const sg=new THREE.BufferGeometry(),count=850,pos=new Float32Array(count*3);
+for(let i=0;i<count;i++){const r=20+Math.random()*35,a=Math.random()*Math.PI*2,y=-15+Math.random()*30;pos[i*3]=Math.cos(a)*r;pos[i*3+1]=y;pos[i*3+2]=Math.sin(a)*r}
+sg.setAttribute('position',new THREE.BufferAttribute(pos,3));
+const stars=new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:.052,sizeAttenuation:true}));scene.add(stars);
+
+// cushion
+const cushion=new THREE.Group();cushion.position.set(0,-1.54,.18);scene.add(cushion);
+const cmat=new THREE.MeshStandardMaterial({color:0xd9b98f,roughness:.96});
+const cbase=new THREE.Mesh(new THREE.SphereGeometry(1,48,24),cmat);cbase.scale.set(2.18,.30,1.30);cbase.castShadow=true;cbase.receiveShadow=true;cushion.add(cbase);
+const seam=new THREE.Mesh(new THREE.TorusGeometry(1,.055,8,64),new THREE.MeshStandardMaterial({color:0xa78061,roughness:1}));
+seam.scale.set(2.15,.52,1.28);seam.rotation.x=Math.PI/2;cushion.add(seam);
+
+// Zs
+const zSprites=[];
+for(let i=0;i<3;i++){
+  const c=document.createElement('canvas');c.width=c.height=128;const ctx=c.getContext('2d');
+  ctx.fillStyle='#d7c8ee';ctx.font='900 78px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Z',64,64);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,opacity:.68}));
+  sp.scale.set(.40+i*.10,.40+i*.10,1);scene.add(sp);zSprites.push(sp)
+}
+
+// load our own GLB
+new GLTFLoader().load('./sleeping-pug.glb?v=6',gltf=>{
+  pug=gltf.scene;
+  pug.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+  // model was built facing +Z, i.e. toward camera
+  pug.position.set(0,-1.12,.18);
+  pug.scale.set(.90,.90,.90);
+  pugBaseScale=.90;
+  scene.add(pug);
+  loading.classList.add('hidden');
+  running=true;
+},undefined,err=>{
+  console.error(err);
+  loading.innerHTML='<div><div style="font-size:54px">🐶</div><b>sleeping-pug.glb fehlt</b><div style="font-size:12px;opacity:.65;margin-top:8px">Bitte beide Dateien ins gleiche GitHub-Verzeichnis hochladen.</div></div>';
+});
+
+// obstacles
+const obstacles=[],raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
+const geos={bone:new THREE.CapsuleGeometry(.18,.72,8,16),can:new THREE.CylinderGeometry(.23,.23,.64,20),star:new THREE.OctahedronGeometry(.30,0),asteroid:new THREE.DodecahedronGeometry(.35,1),bowl:new THREE.CylinderGeometry(.38,.29,.20,24)};
+function mat(k){if(k==='bone')return new THREE.MeshStandardMaterial({color:0xf6d7a7,roughness:.76});if(k==='can')return new THREE.MeshStandardMaterial({color:0x387fc8,roughness:.45,metalness:.25});if(k==='star')return new THREE.MeshStandardMaterial({color:0xffc52d,roughness:.45,emissive:0x7a4900,emissiveIntensity:.32});if(k==='bowl')return new THREE.MeshStandardMaterial({color:0xd94a3d,roughness:.62});return new THREE.MeshStandardMaterial({color:0x6f6d74,roughness:1})}
+function spawn(){
+  const kinds=['bone','can','star','asteroid','bowl'],kind=kinds[Math.floor(Math.random()*kinds.length)],g=new THREE.Group(),m=new THREE.Mesh(geos[kind],mat(kind));g.add(m);
+  const touch=new THREE.Mesh(new THREE.SphereGeometry(.60,12,8),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));g.add(touch);
+  const edge=Math.floor(Math.random()*3);
+  if(edge===0)g.position.set(-6.2-Math.random()*1.5,.1+Math.random()*4.8,-.3+Math.random()*1.6);
+  if(edge===1)g.position.set(6.2+Math.random()*1.5,.1+Math.random()*4.8,-.3+Math.random()*1.6);
+  if(edge===2)g.position.set(-4+Math.random()*8,6+Math.random()*1.2,-.3+Math.random()*1.6);
+  g.userData={life:0,speed:.82+Math.random()*.38+score*.014,phase:Math.random()*8,target:new THREE.Vector3((Math.random()-.5)*1.3,-.78,(Math.random()-.5)*.35)};
+  scene.add(g);obstacles.push(g)
+}
+function remove(o){const i=obstacles.indexOf(o);if(i>=0)obstacles.splice(i,1);scene.remove(o)}
+function hit(o){remove(o);score++;scoreEl.textContent=score;deadline=Math.min(15,deadline+2.35);if(score===1)tipEl.style.opacity=.18}
+function lose(){running=false;finalScoreEl.textContent=score;gameOverEl.classList.remove('hidden')}
+function reset(){for(const o of [...obstacles])remove(o);score=0;deadline=15;spawnIn=.65;running=true;paused=false;scoreEl.textContent='0';pauseBtn.textContent='Ⅱ';gameOverEl.classList.add('hidden')}
+
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(!running||paused)return;
+  pointer.x=(e.clientX/innerWidth)*2-1;pointer.y=-(e.clientY/innerHeight)*2+1;raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(obstacles,true);
+  if(hits.length){let o=hits[0].object;while(o.parent&&!obstacles.includes(o))o=o.parent;if(obstacles.includes(o))hit(o)}
+});
+pauseBtn.addEventListener('click',()=>{if(!running)return;paused=!paused;pauseBtn.textContent=paused?'▶':'Ⅱ'});
+soundBtn.addEventListener('click',()=>{soundOn=!soundOn;soundBtn.textContent=soundOn?'🔊':'🔇'});
+document.getElementById('restartBtn').addEventListener('click',reset);
+
+function update(dt,t){
+  if(pug){
+    const b=1+Math.sin(t*1.55)*.012;
+    pug.scale.set(pugBaseScale,pugBaseScale*b,pugBaseScale);
+  }
+  zSprites.forEach((sp,i)=>{const p=(t*.15+i*.31)%1;sp.position.set(-1.48-p*.18,-.20+p*1.34,.98);sp.material.opacity=(1-p)*.68});
+  if(!running||paused)return;
+  deadline-=dt;spawnIn-=dt;if(spawnIn<=0){spawn();spawnIn=Math.max(.52,1.42-score*.022)*(.78+Math.random()*.42)}
+  for(let i=obstacles.length-1;i>=0;i--){const o=obstacles[i];o.userData.life+=dt;const d=o.userData.target.clone().sub(o.position).normalize();o.position.addScaledVector(d,o.userData.speed*dt);o.position.y+=Math.sin(t*4+o.userData.phase)*dt*.20;o.rotation.x+=dt*1.35;o.rotation.y+=dt*1.8;if(o.position.distanceTo(o.userData.target)<.78||o.userData.life>9.3){remove(o);deadline-=2.9}}
+  if(deadline<=0){deadline=0;lose()}timeEl.textContent=deadline.toFixed(1);timeFill.style.transform=`scaleX(${deadline/15})`
+}
+function animate(now){requestAnimationFrame(animate);const dt=Math.min((now-last)/1000,.05);last=now;const t=now/1000;update(dt,t);camera.position.x=Math.sin(t*.18)*.04;camera.lookAt(0,-.45,0);stars.rotation.y+=.00016;renderer.render(scene,camera)}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script>
+</body>
+</html>
