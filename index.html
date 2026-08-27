@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#050814">
+<title>Sleepy Pug v5</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050814;color:#fff;font-family:Inter,ui-rounded,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+#game{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;pointer-events:none;padding:max(14px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom))}
+.top{display:grid;grid-template-columns:1fr auto 1fr;gap:9px;align-items:start}
+.panel{background:rgba(8,12,25,.82);border:1px solid rgba(255,255,255,.17);border-radius:22px;box-shadow:0 12px 34px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.07);backdrop-filter:blur(12px)}
+.score{justify-self:start;min-width:104px;padding:9px 12px;display:grid;grid-template-columns:32px 1fr;gap:7px;align-items:center}
+.score .star{font-size:27px}.score b{font-size:22px}.score small{grid-column:2;font-size:9px;letter-spacing:.10em;color:#a8dcff;font-weight:900}
+.timer{min-width:137px;padding:9px 12px 8px;text-align:center}
+.timer .row{display:flex;justify-content:center;align-items:center;gap:7px;font-size:23px;font-weight:900}
+.bar{height:8px;border-radius:999px;background:rgba(255,255,255,.10);overflow:hidden;margin-top:6px;border:1px solid rgba(255,255,255,.08)}
+.bar>div{height:100%;width:100%;transform-origin:left center;background:linear-gradient(90deg,#3c9cff,#55d2ff,#86efac)}
+.houses{justify-self:end;min-width:104px;padding:8px 10px;text-align:center}
+.houses .icons{font-size:18px;letter-spacing:1px}.houses small{display:block;margin-top:2px;font-size:9px;color:#a8dcff;font-weight:900;letter-spacing:.10em}
+.tip{position:absolute;left:50%;transform:translateX(-50%);bottom:108px;width:min(420px,88vw);text-align:center;padding:9px 14px;border-radius:999px;background:rgba(8,12,25,.55);backdrop-filter:blur(10px);font-size:12px;font-weight:800;transition:opacity .35s}
+.pause,.sound{pointer-events:auto;position:absolute;bottom:max(20px,env(safe-area-inset-bottom));width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(8,12,25,.82);color:#fff;font-size:23px;font-weight:900;backdrop-filter:blur(12px)}
+.pause{left:18px}.sound{right:18px}
+.mode{position:absolute;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom));min-width:220px;padding:11px 18px;text-align:center;font-size:17px;font-weight:900}
+.ver{font-size:9px;opacity:.48;margin-left:5px}
+.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:22px;background:rgba(3,6,15,.68);backdrop-filter:blur(12px);z-index:10}
+.overlay.hidden{display:none}
+.card{width:min(360px,92vw);padding:26px;border-radius:28px;background:rgba(10,14,28,.95);border:1px solid rgba(255,255,255,.17);text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.5)}
+.card .emoji{font-size:56px}.card h1{margin:8px 0 6px;font-size:25px}.card p{margin:0 0 20px;opacity:.82}
+.btn{pointer-events:auto;border:0;border-radius:18px;padding:13px 20px;background:#fff;color:#0b1020;font-weight:900;font-size:15px}
+@media(max-width:420px){
+ .score,.houses{min-width:92px;padding:8px}.score b{font-size:19px}.score .star{font-size:24px}
+ .timer{min-width:120px}.timer .row{font-size:20px}.houses .icons{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div class="hud">
+  <div class="top">
+    <div class="panel score"><div class="star">⭐</div><b id="score">0</b><small>PUNKTE</small></div>
+    <div class="panel timer"><div class="row">⏱ <span id="time">15.0</span></div><div class="bar"><div id="timeFill"></div></div></div>
+    <div class="panel houses"><div class="icons">🏠🏠🏠</div><small>HÄUSER</small></div>
+  </div>
+  <div class="tip" id="tip">Tippe die fliegenden Dinge an, bevor sie den Mops erreichen.</div>
+  <button class="pause" id="pauseBtn">Ⅱ</button>
+  <div class="panel mode">❤️ 🐶 Mops‑Modus <span class="ver">v5</span></div>
+  <button class="sound" id="soundBtn">🔊</button>
+</div>
+
+<div id="gameOver" class="overlay hidden">
+  <div class="card">
+    <div class="emoji">😳</div>
+    <h1>Der Mops ist wach!</h1>
+    <p>Du hast <b id="finalScore">0</b> Punkte geschafft.</p>
+    <button class="btn" id="restartBtn">Nochmal spielen</button>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const mount=document.getElementById('game');
+const scoreEl=document.getElementById('score');
+const timeEl=document.getElementById('time');
+const timeFill=document.getElementById('timeFill');
+const tipEl=document.getElementById('tip');
+const gameOverEl=document.getElementById('gameOver');
+const finalScoreEl=document.getElementById('finalScore');
+const pauseBtn=document.getElementById('pauseBtn');
+const soundBtn=document.getElementById('soundBtn');
+
+let score=0,deadline=15,running=true,paused=false,soundOn=true,last=performance.now(),spawnIn=.7;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x050814);
+scene.fog=new THREE.FogExp2(0x050814,.011);
+
+const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.1,100);
+camera.position.set(0,3.0,12.4);
+camera.lookAt(0,-.45,0);
+
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.18;
+mount.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0x7d98d8,0x25190e,1.75));
+const key=new THREE.DirectionalLight(0xffd6ae,4.0);key.position.set(4,7,5);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);
+const rim=new THREE.DirectionalLight(0x7397ff,2.1);rim.position.set(-5,4,-4);scene.add(rim);
+const warm=new THREE.PointLight(0xffa04d,11,9,2);warm.position.set(3.0,.8,3.6);scene.add(warm);
+
+// Stars
+const starGeo=new THREE.BufferGeometry(),starCount=850,starPos=new Float32Array(starCount*3);
+for(let i=0;i<starCount;i++){
+  const r=20+Math.random()*35,a=Math.random()*Math.PI*2,y=-15+Math.random()*30;
+  starPos[i*3]=Math.cos(a)*r;starPos[i*3+1]=y;starPos[i*3+2]=Math.sin(a)*r;
+}
+starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
+const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffffff,size:.052,sizeAttenuation:true}));
+scene.add(stars);
+
+// stage shadow
+const stage=new THREE.Mesh(new THREE.CircleGeometry(4.6,64),new THREE.MeshBasicMaterial({color:0x05070d,transparent:true,opacity:.58}));
+stage.rotation.x=-Math.PI/2;stage.position.y=-1.86;stage.scale.set(1.45,.72,1);scene.add(stage);
+
+// Cushion
+const cushion=new THREE.Group();cushion.position.set(0,-1.54,.22);scene.add(cushion);
+const cushionMat=new THREE.MeshStandardMaterial({color:0xd9b98f,roughness:.96});
+const cushionBase=new THREE.Mesh(new THREE.SphereGeometry(1,48,24),cushionMat);
+cushionBase.scale.set(2.15,.30,1.28);cushionBase.castShadow=true;cushionBase.receiveShadow=true;cushion.add(cushionBase);
+const seam=new THREE.Mesh(new THREE.TorusGeometry(1,.055,8,64),new THREE.MeshStandardMaterial({color:0xa78061,roughness:1}));
+seam.scale.set(2.12,.52,1.25);seam.rotation.x=Math.PI/2;seam.position.y=.01;cushion.add(seam);
+for(const [x,z] of [[-.9,.36],[-.3,.40],[.35,.38],[.95,.30],[-.72,-.26],[.1,-.30],[.78,-.25]]){
+  const tuft=new THREE.Mesh(new THREE.SphereGeometry(.052,12,8),new THREE.MeshStandardMaterial({color:0xa78060,roughness:1}));
+  tuft.scale.set(1.25,.35,1);tuft.position.set(x,.25,z);cushion.add(tuft);
+}
+
+// Custom pug model, directly in sleeping pose.
+const pug=new THREE.Group();
+pug.position.set(-.18,-1.18,.38);
+pug.rotation.y=-.08;
+pug.scale.set(.84,.84,.84);
+scene.add(pug);
+
+const fur=new THREE.MeshStandardMaterial({color:0xc58a4c,roughness:.92});
+const furLight=new THREE.MeshStandardMaterial({color:0xd7a066,roughness:.95});
+const furShadow=new THREE.MeshStandardMaterial({color:0x8f592f,roughness:.96});
+const face=new THREE.MeshStandardMaterial({color:0x2a211f,roughness:.9});
+const black=new THREE.MeshStandardMaterial({color:0x080808,roughness:.38});
+const clawMat=new THREE.MeshStandardMaterial({color:0x33231f,roughness:.8});
+
+// Body: compact, pug-like, low to cushion
+const body=new THREE.Mesh(new THREE.SphereGeometry(1,48,30),furLight);
+body.scale.set(1.55,.70,.92);body.position.set(.62,.16,-.04);body.castShadow=true;pug.add(body);
+
+const rump=new THREE.Mesh(new THREE.SphereGeometry(.76,40,26),fur);
+rump.scale.set(1.05,.80,.92);rump.position.set(1.35,.08,-.08);rump.castShadow=true;pug.add(rump);
+
+const shoulder=new THREE.Mesh(new THREE.SphereGeometry(.70,40,24),fur);
+shoulder.scale.set(1.06,.92,.93);shoulder.position.set(-.28,.30,.03);shoulder.castShadow=true;pug.add(shoulder);
+
+// Head turned toward viewer, lower and wider
+const head=new THREE.Mesh(new THREE.SphereGeometry(.84,48,30),fur);
+head.scale.set(1.13,1.00,1.00);head.position.set(-1.08,.40,.34);head.rotation.z=-.09;head.castShadow=true;pug.add(head);
+
+// Forehead dome / brow makes head more pug-like
+const brow=new THREE.Mesh(new THREE.SphereGeometry(.54,36,24),fur);
+brow.scale.set(1.12,.78,.92);brow.position.set(-1.25,.67,.38);brow.castShadow=true;pug.add(brow);
+
+// Black facial mask, broad across front
+const maskL=new THREE.Mesh(new THREE.SphereGeometry(.40,30,22),face);
+maskL.scale.set(1.05,.90,.92);maskL.position.set(-1.47,.36,.57);maskL.castShadow=true;pug.add(maskL);
+const maskR=maskL.clone();maskR.position.z=.13;pug.add(maskR);
+
+const muzzle=new THREE.Mesh(new THREE.SphereGeometry(.44,34,22),face);
+muzzle.scale.set(1.10,.72,.90);muzzle.position.set(-1.72,.18,.36);muzzle.castShadow=true;pug.add(muzzle);
+
+const chin=new THREE.Mesh(new THREE.SphereGeometry(.26,24,16),face);
+chin.scale.set(1.12,.60,.90);chin.position.set(-1.74,.03,.36);pug.add(chin);
+
+// Nose + nostril hint
+const nose=new THREE.Mesh(new THREE.SphereGeometry(.18,28,18),black);
+nose.scale.set(1.28,.80,.78);nose.position.set(-2.02,.28,.39);pug.add(nose);
+for(const z of [.32,.46]){
+  const n=new THREE.Mesh(new THREE.SphereGeometry(.026,10,8),new THREE.MeshBasicMaterial({color:0x242424}));
+  n.position.set(-2.16,.29,z);pug.add(n);
+}
+
+// Eyes closed, two curved eyelids
+function closedEye(z){
+  const curve=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-1.59,.46,z-.10),
+    new THREE.Vector3(-1.51,.41,z),
+    new THREE.Vector3(-1.42,.46,z+.10)
+  ]);
+  const e=new THREE.Mesh(new THREE.TubeGeometry(curve,14,.024,8,false),black);pug.add(e);
+}
+closedEye(.57);closedEye(.14);
+
+// Ears: dark folded triangles
+function ear(z,rz){
+  const e=new THREE.Mesh(new THREE.ConeGeometry(.34,.64,3),face);
+  e.scale.set(1,.9,.9);e.position.set(-1.04,.87,z);e.rotation.set(.22,0,rz);e.castShadow=true;pug.add(e);
+}
+ear(.70,.68);ear(-.02,-.72);
+
+// Strong forehead wrinkles
+for(let i=0;i<5;i++){
+  const wr=new THREE.Mesh(new THREE.TorusGeometry(.33-i*.018,.022,8,32,Math.PI*.84),furShadow);
+  wr.scale.set(1.12,.44,1);wr.rotation.z=-.10;wr.rotation.y=.12;
+  wr.position.set(-1.24,.76-i*.075,.40);pug.add(wr);
+}
+
+// Neck folds
+for(let i=0;i<3;i++){
+  const wr=new THREE.Mesh(new THREE.TorusGeometry(.43,.025,8,32,Math.PI*.72),furShadow);
+  wr.rotation.x=Math.PI/2;wr.rotation.z=.18;wr.scale.set(1,.72,1);
+  wr.position.set(-.20,.43-i*.11,.27);pug.add(wr);
+}
+
+// Front paws tucked near head
+function paw(x,z,rot=0){
+  const p=new THREE.Mesh(new THREE.CapsuleGeometry(.20,.62,8,18),fur);
+  p.rotation.z=Math.PI/2+rot;p.position.set(x,-.14,z);p.castShadow=true;pug.add(p);
+  for(let i=0;i<3;i++){
+    const c=new THREE.Mesh(new THREE.SphereGeometry(.032,10,8),clawMat);
+    c.scale.set(1.15,.55,.65);c.position.set(x-.34+i*.075,-.22,z+.09-i*.06);pug.add(c);
+  }
+}
+paw(-.42,.72,.04);
+paw(-.26,-.22,-.02);
+
+// Back paw peeking out
+const backPaw=new THREE.Mesh(new THREE.CapsuleGeometry(.19,.48,8,18),fur);
+backPaw.rotation.z=Math.PI/2;backPaw.position.set(1.10,-.18,-.38);backPaw.castShadow=true;pug.add(backPaw);
+
+// Curled pug tail
+const tailCurve=new THREE.CatmullRomCurve3([
+  new THREE.Vector3(1.42,.42,.02),
+  new THREE.Vector3(1.78,.72,.02),
+  new THREE.Vector3(1.60,1.02,.02),
+  new THREE.Vector3(1.28,.90,.02),
+  new THREE.Vector3(1.31,.68,.02),
+  new THREE.Vector3(1.50,.64,.02)
+]);
+const tail=new THREE.Mesh(new THREE.TubeGeometry(tailCurve,42,.115,12,false),fur);
+tail.castShadow=true;pug.add(tail);
+
+// little blanket tuck behind him
+const blanket=new THREE.Mesh(new THREE.SphereGeometry(1,32,18),new THREE.MeshStandardMaterial({color:0x6f77b8,roughness:.95}));
+blanket.scale.set(.82,.12,.56);blanket.position.set(.55,-.20,-.38);blanket.rotation.y=.1;blanket.castShadow=true;pug.add(blanket);
+
+// Z sprites
+const zSprites=[];
+for(let i=0;i<3;i++){
+  const c=document.createElement('canvas');c.width=c.height=128;
+  const ctx=c.getContext('2d');ctx.fillStyle='#d7c8ee';ctx.font='900 78px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Z',64,64);
+  const tex=new THREE.CanvasTexture(c);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:.68}));
+  sp.scale.set(.40+i*.10,.40+i*.10,1);scene.add(sp);zSprites.push(sp);
+}
+
+// Obstacles
+const obstacles=[];
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+const geos={
+  bone:new THREE.CapsuleGeometry(.18,.72,8,16),
+  can:new THREE.CylinderGeometry(.23,.23,.64,20),
+  star:new THREE.OctahedronGeometry(.30,0),
+  asteroid:new THREE.DodecahedronGeometry(.35,1),
+  bowl:new THREE.CylinderGeometry(.38,.29,.20,24)
+};
+function materialFor(k){
+  if(k==='bone')return new THREE.MeshStandardMaterial({color:0xf6d7a7,roughness:.76,emissive:0x322007,emissiveIntensity:.12});
+  if(k==='can')return new THREE.MeshStandardMaterial({color:0x387fc8,roughness:.45,metalness:.25});
+  if(k==='star')return new THREE.MeshStandardMaterial({color:0xffc52d,roughness:.45,emissive:0x7a4900,emissiveIntensity:.32});
+  if(k==='bowl')return new THREE.MeshStandardMaterial({color:0xd94a3d,roughness:.62});
+  return new THREE.MeshStandardMaterial({color:0x6f6d74,roughness:1});
+}
+function spawnObstacle(){
+  const kinds=['bone','can','star','asteroid','bowl'];
+  const kind=kinds[Math.floor(Math.random()*kinds.length)];
+  const group=new THREE.Group();
+  const mesh=new THREE.Mesh(geos[kind],materialFor(kind));group.add(mesh);
+  const touch=new THREE.Mesh(new THREE.SphereGeometry(.60,12,8),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+  touch.userData.hitOwner=group;group.add(touch);
+
+  const edge=Math.floor(Math.random()*3);
+  if(edge===0)group.position.set(-6.2-Math.random()*1.5,.1+Math.random()*4.8,-.3+Math.random()*1.6);
+  if(edge===1)group.position.set(6.2+Math.random()*1.5,.1+Math.random()*4.8,-.3+Math.random()*1.6);
+  if(edge===2)group.position.set(-4+Math.random()*8,6.0+Math.random()*1.2,-.3+Math.random()*1.6);
+  group.userData={life:0,speed:.82+Math.random()*.38+score*.014,phase:Math.random()*8,target:new THREE.Vector3((Math.random()-.5)*1.3,-.78,(Math.random()-.5)*.35)};
+  if(kind==='bone')mesh.rotation.z=Math.PI/2;
+  if(kind==='can')mesh.rotation.z=.32;
+  mesh.castShadow=true;scene.add(group);obstacles.push(group);
+}
+function removeObstacle(o){const i=obstacles.indexOf(o);if(i>=0)obstacles.splice(i,1);scene.remove(o)}
+function scoreHit(o){removeObstacle(o);score++;scoreEl.textContent=score;deadline=Math.min(15,deadline+2.35);if(score===1)tipEl.style.opacity=.18}
+function lose(){running=false;finalScoreEl.textContent=score;gameOverEl.classList.remove('hidden')}
+function reset(){for(const o of [...obstacles])removeObstacle(o);score=0;deadline=15;spawnIn=.65;running=true;paused=false;scoreEl.textContent='0';pauseBtn.textContent='Ⅱ';gameOverEl.classList.add('hidden');tipEl.style.opacity=1}
+
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(!running||paused)return;
+  pointer.x=(e.clientX/innerWidth)*2-1;pointer.y=-(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(obstacles,true);
+  if(hits.length){
+    let o=hits[0].object;
+    while(o.parent&&!obstacles.includes(o))o=o.userData.hitOwner||o.parent;
+    if(obstacles.includes(o))scoreHit(o);
+  }
+});
+pauseBtn.addEventListener('click',()=>{if(!running)return;paused=!paused;pauseBtn.textContent=paused?'▶':'Ⅱ'});
+soundBtn.addEventListener('click',()=>{soundOn=!soundOn;soundBtn.textContent=soundOn?'🔊':'🔇'});
+document.getElementById('restartBtn').addEventListener('click',reset);
+
+function update(dt,t){
+  const breathe=1+Math.sin(t*1.55)*.020;
+  body.scale.y=.70*breathe;
+  shoulder.scale.y=.92*(1+Math.sin(t*1.55+.2)*.014);
+  head.rotation.z=-.09+Math.sin(t*.7)*.008;
+  tail.rotation.y=Math.sin(t*.9)*.025;
+
+  zSprites.forEach((sp,i)=>{
+    const p=(t*.15+i*.31)%1;
+    sp.position.set(-1.55-p*.18,-.28+p*1.35,.92);
+    sp.material.opacity=(1-p)*.68;
+  });
+
+  if(!running||paused)return;
+  deadline-=dt;spawnIn-=dt;
+  if(spawnIn<=0){
+    spawnObstacle();
+    spawnIn=Math.max(.52,1.42-score*.022)*(.78+Math.random()*.42);
+  }
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];o.userData.life+=dt;
+    const dir=o.userData.target.clone().sub(o.position).normalize();
+    o.position.addScaledVector(dir,o.userData.speed*dt);
+    o.position.y+=Math.sin(t*4+o.userData.phase)*dt*.20;
+    o.rotation.x+=dt*1.35;o.rotation.y+=dt*1.8;
+    if(o.position.distanceTo(o.userData.target)<.78||o.userData.life>9.3){
+      removeObstacle(o);deadline-=2.9;
+    }
+  }
+  if(deadline<=0){deadline=0;lose()}
+  timeEl.textContent=deadline.toFixed(1);
+  timeFill.style.transform=`scaleX(${deadline/15})`;
+}
+
+function animate(now){
+  requestAnimationFrame(animate);
+  const dt=Math.min((now-last)/1000,.05);last=now;
+  const t=now/1000;update(dt,t);
+  camera.position.x=Math.sin(t*.18)*.04;
+  camera.position.y=3.0+Math.sin(t*.22)*.025;
+  camera.lookAt(0,-.45,0);
+  stars.rotation.y+=.00016;
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)
+});
+</script>
+</body>
+</html>
