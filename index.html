@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#030610">
+<title>Sleepy Pug v8</title>
+<style>
+*{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#030610;color:white;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none}
+#game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;pointer-events:none;padding:max(16px,env(safe-area-inset-top)) 14px max(18px,env(safe-area-inset-bottom))}
+.top{display:grid;grid-template-columns:1fr 1.08fr 1fr;gap:10px}
+.panel{background:rgba(6,10,20,.88);border:1px solid rgba(255,255,255,.16);border-radius:20px;box-shadow:0 8px 24px #0008,inset 0 1px rgba(255,255,255,.06)}
+.stat{height:76px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900}.stat .icon{font-size:28px}.stat .num{font-size:25px}.label{display:block;font-size:9px;color:#9ee7ff;letter-spacing:.12em}
+.timer{height:76px;padding:10px;text-align:center;font-size:25px;font-weight:900}.bar{height:8px;background:#171d2c;border:1px solid #30384c;border-radius:99px;overflow:hidden;margin-top:6px}.bar div{height:100%;transform-origin:left;background:linear-gradient(90deg,#248fff,#4be3df)}
+.houses{height:76px;text-align:center;padding:10px 5px}.houses .icons{font-size:20px}.houses .label{margin-top:3px}
+.tip{position:absolute;bottom:112px;left:50%;transform:translateX(-50%);width:min(410px,78vw);padding:11px 17px;text-align:center;background:rgba(7,10,21,.84);border:1px solid rgba(255,255,255,.08);border-radius:28px;font-size:12px;font-weight:800}
+.ctrl{pointer-events:auto;position:absolute;bottom:max(22px,env(safe-area-inset-bottom));height:62px;border:1px solid rgba(255,255,255,.15);background:rgba(7,10,21,.9);color:white;box-shadow:0 8px 22px #0008}
+.pause,.sound{width:62px;border-radius:50%;font-size:26px;font-weight:900}.pause{left:22px}.sound{right:22px}
+.mode{position:absolute;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);height:62px;min-width:220px;padding:0 20px;display:flex;align-items:center;justify-content:center;border-radius:30px;font-size:17px;font-weight:900}.ver{font-size:9px;opacity:.45;margin-left:5px}
+.overlay{position:fixed;inset:0;z-index:5;display:grid;place-items:center;background:#030610c9;backdrop-filter:blur(10px)}.hidden{display:none}.card{width:min(350px,90vw);padding:26px;text-align:center;border-radius:26px;background:#090e1e;border:1px solid #ffffff25}.btn{border:0;border-radius:16px;padding:13px 20px;font-weight:900}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div class="hud">
+ <div class="top">
+  <div class="panel stat"><span class="icon">⭐</span><div><span class="num" id="score">0</span><span class="label">PUNKTE</span></div></div>
+  <div class="panel timer">⏱ <span id="time">15.0</span><div class="bar"><div id="fill"></div></div></div>
+  <div class="panel houses"><div class="icons">🏠 🏠 🏠</div><span class="label">HÄUSER</span></div>
+ </div>
+ <div class="tip">Tippe die fliegenden Dinge an,<br>bevor sie den Mops erreichen.</div>
+ <button class="ctrl pause" id="pause">Ⅱ</button>
+ <div class="panel mode">❤️ 🐶 Mops‑Modus <span class="ver">v8</span></div>
+ <button class="ctrl sound" id="sound">🔊</button>
+</div>
+<div id="over" class="overlay hidden"><div class="card"><div style="font-size:54px">😳</div><h2>Der Mops ist wach!</h2><p><b id="final">0</b> Punkte</p><button class="btn" id="again">Nochmal spielen</button></div></div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x030610);
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,100);camera.position.set(0,2.6,12);camera.lookAt(0,-.35,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;document.getElementById('game').appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0x6688cc,0x17100b,2));
+
+// dense star field
+const n=1200,p=new Float32Array(n*3);for(let i=0;i<n;i++){p[i*3]=(Math.random()-.5)*34;p[i*3+1]=(Math.random()-.5)*42;p[i*3+2]=-5-Math.random()*18}
+const bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.BufferAttribute(p,3));scene.add(new THREE.Points(bg,new THREE.PointsMaterial({color:0xcbd6ff,size:.035})));
+
+// Pug is the actual supplied concept-art pug, not a redrawn model.
+const tex=new THREE.TextureLoader().load('./sleeping-pug.png?v=8');tex.colorSpace=THREE.SRGBColorSpace;
+const pug=new THREE.Mesh(new THREE.PlaneGeometry(5.0,2.65),new THREE.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.035}));
+pug.position.set(0,-1.18,.25);scene.add(pug);
+
+// animated Zs
+const zs=[];for(let i=0;i<3;i++){let c=document.createElement('canvas');c.width=c.height=128;let x=c.getContext('2d');x.font='900 80px sans-serif';x.fillStyle='#caaad8';x.textAlign='center';x.fillText('Z',64,85);let s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));s.scale.set(.42,.42,1);scene.add(s);zs.push(s)}
+
+const obstacles=[],ray=new THREE.Raycaster(),ptr=new THREE.Vector2();
+const G=[()=>new THREE.DodecahedronGeometry(.34,1),()=>new THREE.CapsuleGeometry(.14,.68,7,14),()=>new THREE.OctahedronGeometry(.28),()=>new THREE.CylinderGeometry(.36,.29,.22,24),()=>new THREE.CylinderGeometry(.22,.22,.52,20)];
+const C=[0x6b625d,0xe8c692,0xffc52c,0xc73e32,0x345d8e];
+let score=0,time=15,last=performance.now(),spawn=.5,running=true,paused=false;
+function addObj(){let i=Math.floor(Math.random()*G.length),o=new THREE.Mesh(G[i](),new THREE.MeshStandardMaterial({color:C[i],roughness:.55,metalness:i===4?.3:0}));let e=Math.floor(Math.random()*3);if(e===0)o.position.set(-6,.1+Math.random()*5,Math.random());if(e===1)o.position.set(6,.1+Math.random()*5,Math.random());if(e===2)o.position.set(-4+Math.random()*8,6,Math.random());o.userData={target:new THREE.Vector3((Math.random()-.5)*1.2,-.8,.2),speed:.8+Math.random()*.45+score*.012};scene.add(o);obstacles.push(o)}
+function del(o){let i=obstacles.indexOf(o);if(i>=0)obstacles.splice(i,1);scene.remove(o)}
+renderer.domElement.addEventListener('pointerdown',e=>{if(!running||paused)return;ptr.x=e.clientX/innerWidth*2-1;ptr.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(ptr,camera);let h=ray.intersectObjects(obstacles);if(h.length){del(h[0].object);score++;document.getElementById('score').textContent=score;time=Math.min(15,time+2.2)}})
+document.getElementById('pause').onclick=()=>{paused=!paused;document.getElementById('pause').textContent=paused?'▶':'Ⅱ'};
+document.getElementById('sound').onclick=()=>document.getElementById('sound').textContent=document.getElementById('sound').textContent==='🔊'?'🔇':'🔊';
+document.getElementById('again').onclick=()=>{obstacles.slice().forEach(del);score=0;time=15;running=true;document.getElementById('score').textContent=0;document.getElementById('over').classList.add('hidden')};
+function loop(now){requestAnimationFrame(loop);let dt=Math.min((now-last)/1000,.05);last=now,t=now/1000;
+pug.scale.y=1+Math.sin(t*1.45)*.009;zs.forEach((z,i)=>{let q=(t*.16+i*.29)%1;z.position.set(-1.55-q*.14,-.2+q*1.4,.7);z.material.opacity=(1-q)*.7});
+if(running&&!paused){time-=dt;spawn-=dt;if(spawn<=0){addObj();spawn=Math.max(.55,1.3-score*.018)}for(let i=obstacles.length-1;i>=0;i--){let o=obstacles[i],d=o.userData.target.clone().sub(o.position).normalize();o.position.addScaledVector(d,o.userData.speed*dt);o.rotation.x+=dt*1.5;o.rotation.y+=dt*1.8;if(o.position.distanceTo(o.userData.target)<.65){del(o);time-=2.8}}if(time<=0){time=0;running=false;document.getElementById('final').textContent=score;document.getElementById('over').classList.remove('hidden')}document.getElementById('time').textContent=time.toFixed(1);document.getElementById('fill').style.transform=`scaleX(${time/15})`}
+renderer.render(scene,camera)}
+requestAnimationFrame(loop);addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
+</script>
+</body></html>
