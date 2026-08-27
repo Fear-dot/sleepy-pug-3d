@@ -1,0 +1,11 @@
+window.SleepingPets=window.SleepingPets||{};
+SleepingPets.CONFIG={
+ startingTimer:15,minSpawnDelay:300,startingSpawnDelay:1050,spawnAccelerationPerSecond:20,
+ passiveWakePerSecond:.6,missWakePenalty:10,badClickWakePenalty:38,
+ goodWakeRelief:1.2,rareWakeRelief:3.5,goodReward:12,rareReward:50,
+ comboStep:5,maxMultiplier:8,itemLifetimeMin:560,itemLifetimeMax:1450,
+ badItemChanceStart:.15,badItemChanceMax:.38,rareItemChance:.12
+};
+SleepingPets.GOOD_ICONS=["🪙","🧶","🦴","🪶","🎾","🧸"];
+SleepingPets.RARE_ICONS=["💎","⭐","🎁"];
+SleepingPets.BAD_ICONS=["💣","⏰","🌶️","📣","🧹"];
