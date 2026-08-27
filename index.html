@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#070b18">
+<title>Sleepy Pug</title>
+<style>
+:root{
+  --panel: rgba(8,12,25,.78);
+  --panel-border: rgba(255,255,255,.18);
+  --text:#fff;
+  --muted:#b9dfff;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;width:100%;height:100%;overflow:hidden;
+  background:#070b18;color:var(--text);
+  font-family:Inter,ui-rounded,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  touch-action:none;
+}
+#game{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;pointer-events:none;padding:max(14px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom));}
+.top{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:10px;
+}
+.panel{
+  background:var(--panel);
+  border:1px solid var(--panel-border);
+  box-shadow:0 12px 35px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter:blur(12px);
+  border-radius:22px;
+}
+.score{
+  justify-self:start;
+  min-width:112px;padding:10px 14px;
+  display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:center;
+}
+.score .star{font-size:30px;filter:drop-shadow(0 4px 10px rgba(255,198,42,.35))}
+.score b{font-size:24px;line-height:1}
+.score small{grid-column:2;font-size:10px;letter-spacing:.08em;color:#b9dfff;font-weight:900}
+.timer{
+  min-width:150px;padding:10px 14px 9px;text-align:center;
+}
+.timer .row{display:flex;justify-content:center;align-items:center;gap:8px;font-weight:900;font-size:25px}
+.bar{height:8px;border-radius:999px;background:rgba(255,255,255,.10);overflow:hidden;margin-top:7px;border:1px solid rgba(255,255,255,.08)}
+.bar>div{height:100%;width:100%;transform-origin:left center;background:linear-gradient(90deg,#60a5fa,#7dd3fc,#86efac)}
+.houses{
+  justify-self:end;min-width:112px;padding:9px 12px;text-align:center;
+}
+.houses .icons{font-size:21px;letter-spacing:2px}
+.houses small{display:block;font-size:10px;color:#b9dfff;font-weight:900;letter-spacing:.08em;margin-top:1px}
+.pause{
+  pointer-events:auto;position:absolute;left:18px;bottom:max(20px,env(safe-area-inset-bottom));
+  width:58px;height:58px;border:1px solid var(--panel-border);border-radius:50%;
+  background:var(--panel);color:white;font-size:25px;font-weight:900;backdrop-filter:blur(12px);
+}
+.mode{
+  position:absolute;left:50%;transform:translateX(-50%);
+  bottom:max(18px,env(safe-area-inset-bottom));
+  min-width:210px;padding:11px 18px;text-align:center;font-weight:900;font-size:17px;
+}
+.tip{
+  position:absolute;left:50%;transform:translateX(-50%);
+  bottom:96px;width:min(420px,88vw);text-align:center;padding:9px 14px;border-radius:999px;
+  background:rgba(8,12,25,.50);backdrop-filter:blur(10px);
+  font-size:12px;font-weight:800;transition:opacity .4s;
+}
+.overlay{
+  position:fixed;inset:0;display:grid;place-items:center;padding:20px;
+  background:rgba(3,6,15,.68);backdrop-filter:blur(12px);
+}
+.hidden{display:none}
+.card{
+  width:min(360px,92vw);padding:26px;border-radius:28px;
+  background:rgba(10,14,28,.93);border:1px solid var(--panel-border);
+  text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.5);
+}
+.card .emoji{font-size:56px}
+.card h1{margin:8px 0 6px;font-size:26px}
+.card p{margin:0 0 20px;opacity:.82}
+.btn{
+  pointer-events:auto;border:0;border-radius:18px;padding:13px 20px;
+  background:white;color:#0b1020;font-weight:900;font-size:15px;
+}
+@media (max-width:420px){
+  .score,.houses{min-width:94px;padding:8px 10px}
+  .score b{font-size:20px}.score .star{font-size:25px}
+  .timer{min-width:126px}.timer .row{font-size:21px}
+  .houses .icons{font-size:18px}
+}
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div class="hud">
+  <div class="top">
+    <div class="panel score"><div class="star">⭐</div><b id="score">0</b><small>PUNKTE</small></div>
+    <div class="panel timer">
+      <div class="row">⏱ <span id="time">15.0</span></div>
+      <div class="bar"><div id="timeFill"></div></div>
+    </div>
+    <div class="panel houses"><div class="icons" id="houseIcons">🏠🏠🏠</div><small>HÄUSER</small></div>
+  </div>
+
+  <div class="tip" id="tip">Tippe die fliegenden Dinge an, bevor sie den Mops erreichen.</div>
+  <button class="pause" id="pauseBtn">Ⅱ</button>
+  <div class="panel mode">❤️ 🐶 Mops‑Modus</div>
+</div>
+
+<div id="gameOver" class="overlay hidden">
+  <div class="card">
+    <div class="emoji">😳</div>
+    <h1>Der Mops ist wach!</h1>
+    <p>Du hast <b id="finalScore">0</b> Punkte geschafft.</p>
+    <button class="btn" id="restartBtn">Nochmal spielen</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const mount = document.getElementById('game');
+const scoreEl = document.getElementById('score');
+const timeEl = document.getElementById('time');
+const timeFill = document.getElementById('timeFill');
+const tipEl = document.getElementById('tip');
+const gameOverEl = document.getElementById('gameOver');
+const finalScoreEl = document.getElementById('finalScore');
+const pauseBtn = document.getElementById('pauseBtn');
+
+let score = 0;
+let deadline = 15;
+let running = true;
+let paused = false;
+let last = performance.now();
+let spawnIn = .85;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050814);
+scene.fog = new THREE.FogExp2(0x050814,.015);
+
+const camera = new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.1,100);
+camera.position.set(0,3.5,10.8);
+camera.lookAt(0,.6,0);
+
+const renderer = new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+mount.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x6b78a8,1.25));
+
+const key = new THREE.DirectionalLight(0xffe0b2,3.8);
+key.position.set(4,6,5);
+key.castShadow = true;
+key.shadow.mapSize.set(1024,1024);
+scene.add(key);
+
+const rim = new THREE.DirectionalLight(0x6da7ff,2.2);
+rim.position.set(-5,4,-4);
+scene.add(rim);
+
+const glow = new THREE.PointLight(0xffb85c,16,10,2);
+glow.position.set(3.7,2.4,3);
+scene.add(glow);
+
+// star field
+const starGeo = new THREE.BufferGeometry();
+const starCount = 700;
+const positions = new Float32Array(starCount*3);
+for(let i=0;i<starCount;i++){
+  const r = 22 + Math.random()*28;
+  const a = Math.random()*Math.PI*2;
+  const y = -10 + Math.random()*24;
+  positions[i*3] = Math.cos(a)*r;
+  positions[i*3+1] = y;
+  positions[i*3+2] = Math.sin(a)*r;
+}
+starGeo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+const stars = new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffffff,size:.055,sizeAttenuation:true}));
+scene.add(stars);
+
+// soft floor shadow plane
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(4.4,64),
+  new THREE.MeshBasicMaterial({color:0x080d1c,transparent:true,opacity:.55})
+);
+floor.rotation.x = -Math.PI/2;
+floor.position.y = -.42;
+scene.add(floor);
+
+// cushion
+const cushion = new THREE.Group();
+scene.add(cushion);
+
+const cushionMat = new THREE.MeshStandardMaterial({color:0xd9b98f,roughness:.95});
+const base = new THREE.Mesh(new THREE.SphereGeometry(1,48,24),cushionMat);
+base.scale.set(2.5,.36,1.75);
+base.position.y = -.02;
+base.castShadow = true;
+base.receiveShadow = true;
+cushion.add(base);
+
+for (const x of [-1.6,-.8,0,.8,1.6]){
+  const seam = new THREE.Mesh(new THREE.TorusGeometry(.20,.025,8,30),new THREE.MeshStandardMaterial({color:0xb9946d,roughness:1}));
+  seam.rotation.x = Math.PI/2;
+  seam.position.set(x*.9,.24,.2*Math.sin(x));
+  seam.scale.set(1.3,.7,1);
+  cushion.add(seam);
+}
+
+// PUG
+const pug = new THREE.Group();
+pug.position.set(0,.45,.08);
+pug.rotation.y = .05;
+scene.add(pug);
+
+const fur = new THREE.MeshStandardMaterial({color:0xc99155,roughness:.93});
+const furLight = new THREE.MeshStandardMaterial({color:0xd8a76a,roughness:.95});
+const dark = new THREE.MeshStandardMaterial({color:0x241d1c,roughness:.88});
+const black = new THREE.MeshStandardMaterial({color:0x090909,roughness:.38});
+const claw = new THREE.MeshStandardMaterial({color:0x3a2b25,roughness:.7});
+
+const body = new THREE.Mesh(new THREE.SphereGeometry(1.15,48,30),furLight);
+body.scale.set(1.55,.86,.92);
+body.position.set(.38,.12,0);
+body.castShadow = true;
+pug.add(body);
+
+// shoulder / neck
+const neck = new THREE.Mesh(new THREE.SphereGeometry(.78,40,24),fur);
+neck.scale.set(1,.92,.88);
+neck.position.set(-.55,.34,.02);
+neck.castShadow = true;
+pug.add(neck);
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(.90,48,30),fur);
+head.scale.set(1.03,.95,.92);
+head.position.set(-1.12,.48,.18);
+head.castShadow = true;
+pug.add(head);
+
+// forehead folds
+for(let i=0;i<4;i++){
+  const fold = new THREE.Mesh(
+    new THREE.TorusGeometry(.38-i*.035,.028,8,34,Math.PI*.82),
+    dark
+  );
+  fold.scale.set(1.12,.46,1);
+  fold.rotation.z = -.18;
+  fold.rotation.y = .18;
+  fold.position.set(-1.27,.82-i*.10,.36);
+  pug.add(fold);
+}
+
+const maskL = new THREE.Mesh(new THREE.SphereGeometry(.43,32,20),dark);
+maskL.scale.set(1.0,.82,.75);
+maskL.position.set(-1.48,.48,.47);
+maskL.castShadow = true;
+pug.add(maskL);
+
+const maskR = maskL.clone();
+maskR.position.z = -.12;
+pug.add(maskR);
+
+const muzzle = new THREE.Mesh(new THREE.SphereGeometry(.52,36,22),dark);
+muzzle.scale.set(1.03,.72,.82);
+muzzle.position.set(-1.72,.25,.19);
+muzzle.castShadow = true;
+pug.add(muzzle);
+
+const nose = new THREE.Mesh(new THREE.SphereGeometry(.20,28,18),black);
+nose.scale.set(1.25,.78,.78);
+nose.position.set(-2.08,.37,.21);
+pug.add(nose);
+
+// sleeping eyes
+function eye(z){
+  const c = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-1.57,.56,z-.11),
+    new THREE.Vector3(-1.48,.51,z),
+    new THREE.Vector3(-1.38,.56,z+.1)
+  ]);
+  const m = new THREE.Mesh(new THREE.TubeGeometry(c,16,.027,8,false),black);
+  pug.add(m);
+}
+eye(.49); eye(-.11);
+
+// ears
+function ear(z,rz){
+  const e = new THREE.Mesh(new THREE.ConeGeometry(.32,.62,3),dark);
+  e.position.set(-1.08,.96,z);
+  e.rotation.set(.22,.05,rz);
+  e.castShadow = true;
+  pug.add(e);
+}
+ear(.58,.68); ear(-.32,-.74);
+
+// front paws
+function paw(z,yoff=0){
+  const upper = new THREE.Mesh(new THREE.CapsuleGeometry(.23,.72,8,18),fur);
+  upper.rotation.z = Math.PI/2;
+  upper.position.set(-.55,-.06+yoff,z);
+  upper.castShadow = true;
+  pug.add(upper);
+  for(let i=0;i<3;i++){
+    const n = new THREE.Mesh(new THREE.SphereGeometry(.04,10,8),claw);
+    n.scale.set(1.2,.6,.65);
+    n.position.set(-.95+i*.09,-.19+yoff,z+.11-i*.08);
+    pug.add(n);
+  }
+}
+paw(.62); paw(-.40,-.02);
+
+// back leg
+const backLeg = new THREE.Mesh(new THREE.SphereGeometry(.48,30,20),fur);
+backLeg.scale.set(1.1,.72,.82);
+backLeg.position.set(1.2,-.16,-.32);
+backLeg.castShadow = true;
+pug.add(backLeg);
+
+// curled tail
+const tailCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(1.48,.45,.05),
+  new THREE.Vector3(1.9,.78,.05),
+  new THREE.Vector3(1.65,1.13,.05),
+  new THREE.Vector3(1.30,.91,.05),
+  new THREE.Vector3(1.42,.68,.05)
+]);
+const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve,42,.13,12,false),fur);
+tail.castShadow = true;
+pug.add(tail);
+
+// floating Zs
+const zSprites = [];
+for(let i=0;i<3;i++){
+  const c = document.createElement('canvas');
+  c.width=c.height=128;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='white';
+  ctx.font='900 78px sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('Z',64,64);
+  const tex=new THREE.CanvasTexture(c);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:.75}));
+  sp.scale.set(.42+i*.11,.42+i*.11,1);
+  scene.add(sp);zSprites.push(sp);
+}
+
+// obstacles
+const obstacles = [];
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+const geos = {
+  bone: new THREE.CapsuleGeometry(.17,.65,8,14),
+  can: new THREE.CylinderGeometry(.22,.22,.62,20),
+  ball: new THREE.SphereGeometry(.28,20,16),
+  asteroid: new THREE.DodecahedronGeometry(.34,1)
+};
+
+function makeObstacle(){
+  const kinds=['bone','can','ball','asteroid'];
+  const kind=kinds[Math.floor(Math.random()*kinds.length)];
+  let mat;
+  if(kind==='bone') mat=new THREE.MeshStandardMaterial({color:0xf7d49b,roughness:.78,emissive:0x3a2308,emissiveIntensity:.15});
+  if(kind==='can') mat=new THREE.MeshStandardMaterial({color:0x3f83d8,roughness:.5,metalness:.2});
+  if(kind==='ball') mat=new THREE.MeshStandardMaterial({color:0xe74c3c,roughness:.7});
+  if(kind==='asteroid') mat=new THREE.MeshStandardMaterial({color:0x6c6b72,roughness:1});
+  const m=new THREE.Mesh(geos[kind],mat);
+  const side=Math.random()<.5?-1:1;
+  m.position.set(side*(5.4+Math.random()*1.8),1.0+Math.random()*4.2,-1.0+Math.random()*2.5);
+  m.userData={kind,life:0,speed:.88+Math.random()*.45+score*.018,phase:Math.random()*8};
+  if(kind==='bone') m.rotation.z=Math.PI/2;
+  m.castShadow=true;
+  scene.add(m);obstacles.push(m);
+}
+
+function removeObstacle(m){
+  const i=obstacles.indexOf(m);
+  if(i>=0) obstacles.splice(i,1);
+  scene.remove(m);
+}
+
+function hit(m){
+  removeObstacle(m);
+  score++;
+  scoreEl.textContent=score;
+  deadline=Math.min(15,deadline+2.3);
+  if(score===1) tipEl.style.opacity=.25;
+}
+
+function lose(){
+  running=false;
+  finalScoreEl.textContent=score;
+  gameOverEl.classList.remove('hidden');
+}
+
+function reset(){
+  for(const o of [...obstacles]) removeObstacle(o);
+  score=0;deadline=15;spawnIn=.65;running=true;paused=false;
+  scoreEl.textContent='0';pauseBtn.textContent='Ⅱ';
+  gameOverEl.classList.add('hidden');
+  tipEl.style.opacity=1;
+}
+
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(!running||paused) return;
+  pointer.x=(e.clientX/innerWidth)*2-1;
+  pointer.y=-(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(obstacles,false);
+  if(hits.length) hit(hits[0].object);
+});
+
+pauseBtn.addEventListener('click',()=>{
+  if(!running) return;
+  paused=!paused;
+  pauseBtn.textContent=paused?'▶':'Ⅱ';
+});
+document.getElementById('restartBtn').addEventListener('click',reset);
+
+function update(dt,t){
+  // breathing and subtle sleep motion
+  const breathe=1+Math.sin(t*1.55)*.026;
+  body.scale.y=.86*breathe;
+  neck.scale.y=.92*(1+Math.sin(t*1.55+.25)*.018);
+  head.rotation.z=-.03+Math.sin(t*.8)*.012;
+  tail.rotation.y=Math.sin(t*.9)*.035;
+
+  zSprites.forEach((sp,i)=>{
+    const p=(t*.16+i*.31)%1;
+    sp.position.set(-2.0-p*.28,1.55+p*1.8,.55);
+    sp.material.opacity=(1-p)*.75;
+  });
+
+  if(!running||paused) return;
+
+  deadline-=dt;
+  spawnIn-=dt;
+  if(spawnIn<=0){
+    makeObstacle();
+    spawnIn=Math.max(.48,1.35-score*.025)*(.75+Math.random()*.45);
+  }
+
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];
+    o.userData.life+=dt;
+    const target=new THREE.Vector3(0,.55,.05);
+    const dir=target.clone().sub(o.position).normalize();
+    o.position.addScaledVector(dir,o.userData.speed*dt);
+    o.position.y+=Math.sin(t*4+o.userData.phase)*dt*.28;
+    o.rotation.x+=dt*1.7;
+    o.rotation.y+=dt*2.0;
+    if(o.position.distanceTo(target)<1.45 || o.userData.life>8.2){
+      removeObstacle(o);
+      deadline-=3.2;
+    }
+  }
+
+  if(deadline<=0){
+    deadline=0;lose();
+  }
+  timeEl.textContent=deadline.toFixed(1);
+  timeFill.style.transform=`scaleX(${deadline/15})`;
+}
+
+function animate(now){
+  requestAnimationFrame(animate);
+  const dt=Math.min((now-last)/1000,.05);last=now;
+  const t=now/1000;
+  update(dt,t);
+
+  camera.position.x=Math.sin(t*.22)*.12;
+  camera.position.y=3.5+Math.sin(t*.28)*.05;
+  camera.lookAt(0,.6,0);
+
+  stars.rotation.y+=.0002;
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
